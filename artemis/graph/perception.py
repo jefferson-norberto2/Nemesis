@@ -216,12 +216,33 @@ async def perception_node(state: State, ctx: ArtemisContext) -> dict:
         )
         logger.info(f"Offloaded perception data saving to background with image_name: {image_name}")
 
+    # Downscale screenshot for operator multimodal model if configured
+    model_screenshot_b64 = latest_screenshot_b64
+    try:
+        from artemis.utils.screenshot_scaler import scale_screenshot
+
+        _scaled_bytes, scaled_b64, transform = scale_screenshot(latest_screenshot_bytes)
+        if transform.is_scaled:
+            model_screenshot_b64 = scaled_b64
+            if ctx:
+                ctx.scaling_transform = transform
+                if ctx.device:
+                    ctx.device.scaled_width = transform.scaled_width
+                    ctx.device.scaled_height = transform.scaled_height
+        elif ctx:
+            ctx.scaling_transform = transform
+    except (ValueError, TypeError, OSError, RuntimeError) as scale_err:
+        logger.warning(
+            f"Perception screenshot downscaling encountered error: {scale_err}; "
+            "falling back to native resolution."
+        )
+
     # Return state update
     update = {
         "latest_screenshot": screenshot_path,
         "latest_ui_hierarchy": fused_xml,
         "operator_raw_data": {
-            "screenshot_b64": latest_screenshot_b64,
+            "screenshot_b64": model_screenshot_b64,
             "xml_hierarchy": xml_hierarchy if xml_hierarchy is not None else [],
             "ocr_results": ocr_results,
             "width": device_data.width,

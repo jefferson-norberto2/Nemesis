@@ -48,6 +48,7 @@ from artemis.utils.coordinates import (
     parse_swipe_parameters,
 )
 from artemis.utils.notes import get_note_file_path
+from artemis.utils.screenshot_scaler import ScalingTransform
 from artemis.utils.plan_grammar import parse_plan
 from artemis.memory.context_policy import build_history_for
 from artemis.utils.task_tree import get_active_subgoal_hashes
@@ -1153,8 +1154,15 @@ class OperatorNode:
                     )
                 try:
                     nx, ny = map(float, target)
-                    x = int(max(0, min(width - 1, nx * width / 1000)))
-                    y = int(max(0, min(height - 1, ny * height / 1000)))
+                    transform = getattr(self.ctx, "scaling_transform", None)
+                    if isinstance(transform, ScalingTransform) and transform.is_scaled:
+                        x, y = transform.model_to_native(nx, ny)
+                    elif nx > 1000 or ny > 1000:
+                        x = int(max(0, min(width - 1, round(nx))))
+                        y = int(max(0, min(height - 1, round(ny))))
+                    else:
+                        x = int(max(0, min(width - 1, nx * width / 1000)))
+                        y = int(max(0, min(height - 1, ny * height / 1000)))
                     return {"center": [x, y], "target_description": described}, None
                 except (ValueError, TypeError):
                     return (
@@ -1298,10 +1306,20 @@ class OperatorNode:
                     )
                 try:
                     nx1, ny1, nx2, ny2 = map(float, target)
-                    x1 = int(max(0, min(width - 1, nx1 * width / 1000)))
-                    y1 = int(max(0, min(height - 1, ny1 * height / 1000)))
-                    x2 = int(max(0, min(width - 1, nx2 * width / 1000)))
-                    y2 = int(max(0, min(height - 1, ny2 * height / 1000)))
+                    transform = getattr(self.ctx, "scaling_transform", None)
+                    if isinstance(transform, ScalingTransform) and transform.is_scaled:
+                        x1, y1 = transform.model_to_native(nx1, ny1)
+                        x2, y2 = transform.model_to_native(nx2, ny2)
+                    elif any(c > 1000 for c in (nx1, ny1, nx2, ny2)):
+                        x1 = int(max(0, min(width - 1, round(nx1))))
+                        y1 = int(max(0, min(height - 1, round(ny1))))
+                        x2 = int(max(0, min(width - 1, round(nx2))))
+                        y2 = int(max(0, min(height - 1, round(ny2))))
+                    else:
+                        x1 = int(max(0, min(width - 1, nx1 * width / 1000)))
+                        y1 = int(max(0, min(height - 1, ny1 * height / 1000)))
+                        x2 = int(max(0, min(width - 1, nx2 * width / 1000)))
+                        y2 = int(max(0, min(height - 1, ny2 * height / 1000)))
                 except (ValueError, TypeError):
                     return (
                         [],

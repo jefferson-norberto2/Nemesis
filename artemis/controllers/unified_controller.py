@@ -56,6 +56,36 @@ class UnifiedMobileController(UnifiedMobileControllerBase):
         super().__init__(ctx, get_driver(ctx))
         self._segment_cache: dict[tuple[str, int, float, float], VideoRecordingResult] = {}
 
+    def get_scaling_transform(self) -> Any:
+        """Returns the active ScalingTransform for the current device and screenshot resolution."""
+        from artemis.utils.screenshot_scaler import ScalingTransform, get_model_screenshot_max_width
+
+        transform = getattr(self.ctx, "scaling_transform", None)
+        if isinstance(transform, ScalingTransform):
+            return transform
+
+        w = getattr(self.ctx.device, "device_width", 1080) if self.ctx and self.ctx.device else 1080
+        h = (
+            getattr(self.ctx.device, "device_height", 2400)
+            if self.ctx and self.ctx.device
+            else 2400
+        )
+        max_w = get_model_screenshot_max_width()
+        if max_w > 0 and w > max_w:
+            scale_ratio = float(max_w) / float(w)
+            scaled_w = int(max_w)
+            scaled_h = max(1, int(round(h * scale_ratio)))
+            return ScalingTransform(w, h, scaled_w, scaled_h, 0, 0)
+        return ScalingTransform(w, h, w, h, 0, 0)
+
+    def scale_model_to_native(self, x_model: float, y_model: float) -> tuple[int, int]:
+        """Scales coordinates from model visual space back to physical native screen resolution."""
+        return self.get_scaling_transform().model_to_native(x_model, y_model)
+
+    def scale_native_to_model(self, x_native: float, y_native: float) -> tuple[int, int]:
+        """Scales native screen coordinates to model visual space."""
+        return self.get_scaling_transform().native_to_model(x_native, y_native)
+
     @staticmethod
     async def _spawn_scrcpy(command: list[str]) -> asyncio.subprocess.Process:
         kwargs: dict[str, Any] = {

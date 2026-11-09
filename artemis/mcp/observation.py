@@ -116,6 +116,29 @@ async def observe(
             logger.error(f"Failed to save fallback screenshot: {e}")
 
     from pathlib import Path
+    from artemis.utils.screenshot_scaler import scale_screenshot
+
+    model_bytes = screenshot_bytes
+    scaled_width = width
+    scaled_height = height
+    try:
+        scaled_bytes, _scaled_b64, transform = scale_screenshot(screenshot_bytes)
+        if transform.is_scaled:
+            model_bytes = scaled_bytes
+            scaled_width = transform.scaled_width
+            scaled_height = transform.scaled_height
+            if ctx:
+                ctx.scaling_transform = transform
+                if ctx.device:
+                    ctx.device.scaled_width = scaled_width
+                    ctx.device.scaled_height = scaled_height
+        elif ctx:
+            ctx.scaling_transform = transform
+    except (ValueError, TypeError, OSError, RuntimeError) as scale_err:
+        logger.warning(
+            f"Screenshot downscaling encountered error in observation: {scale_err}; "
+            "falling back to native resolution."
+        )
 
     return (
         ObserveResult(
@@ -129,5 +152,5 @@ async def observe(
             elements=elements,
             hierarchy_ok=hierarchy_ok,
         ),
-        screenshot_bytes,
+        model_bytes,
     )

@@ -35,6 +35,7 @@ from artemis.context import ArtemisContext
 from artemis.controllers.unified_controller import UnifiedMobileController
 from artemis.mcp.action_manifest import DEVICE_ACTIONS, ExtensionTool
 from artemis.mcp.action_types import ActionCode, ActionResult
+from artemis.utils.screenshot_scaler import ScalingTransform
 from third_party.mobile_use.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -124,10 +125,18 @@ class AdbActuator:
         height = getattr(self.ctx.device, "device_height", 2400) if self.ctx.device else 2400
         return width or 1080, height or 2400
 
-    def _to_px(self, nx: int, ny: int) -> tuple[int, int]:
+    def _to_px(self, nx: int | float, ny: int | float) -> tuple[int, int]:
         width, height = self._dims()
-        x = int(max(0, min(width - 1, int(nx) * width / 1000)))
-        y = int(max(0, min(height - 1, int(ny) * height / 1000)))
+        transform = getattr(self.ctx, "scaling_transform", None)
+        if isinstance(transform, ScalingTransform) and transform.is_scaled:
+            if (nx > 1000 or ny > 1000) and (
+                nx <= transform.scaled_width and ny <= transform.scaled_height
+            ):
+                return transform.model_to_native(nx, ny)
+        if (nx > 1000 or ny > 1000) and (nx < width and ny < height):
+            return int(round(nx)), int(round(ny))
+        x = int(max(0, min(width - 1, round(float(nx) * width / 1000.0))))
+        y = int(max(0, min(height - 1, round(float(ny) * height / 1000.0))))
         return x, y
 
     # --- Required action -------------------------------------------------------------

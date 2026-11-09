@@ -125,6 +125,28 @@ class Settings(BaseSettings):
     ARTEMIS_DEFAULT_PROFILE: str = Field(default=DEFAULT_PROFILE)
     ARTEMIS_DEFAULT_MODEL: str = Field(default=DEFAULT_MODEL)
 
+    # Screenshot Downscaling for Multimodal Model (Nemesis)
+    MODEL_SCREENSHOT_MAX_WIDTH: int | str | None = Field(
+        default=None,
+        description=(
+            "Max screenshot width for multimodal model; 0/empty defaults to native resolution."
+        ),
+    )
+    MODEL_SCREENSHOT_RESOLUTION: int | str | None = Field(
+        default=None,
+        description=(
+            "Screenshot resolution for multimodal model; 0/empty defaults to native resolution."
+        ),
+    )
+    NEMESIS_MODEL_SCREENSHOT_MAX_WIDTH: int | str | None = Field(
+        default=None,
+        description="Nemesis namespace alias for MODEL_SCREENSHOT_MAX_WIDTH.",
+    )
+    NEMESIS_MODEL_SCREENSHOT_RESOLUTION: int | str | None = Field(
+        default=None,
+        description="Nemesis namespace alias for MODEL_SCREENSHOT_RESOLUTION.",
+    )
+
     # Explorer Tool Settings (the tier itself is configured in artemis.jsonc or
     # via ARTEMIS_EXPLORER_VERSION; see artemis.config.agent.ExplorerConfig)
     EXPLORER_CACHING: bool | None = Field(

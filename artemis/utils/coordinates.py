@@ -328,6 +328,37 @@ def denormalize_point(nx: int, ny: int, width: int, height: int) -> list[int]:
     return [max(0, min(width - 1, x)), max(0, min(height - 1, y))]
 
 
+def scale_model_coordinates_to_native(
+    x_model: float,
+    y_model: float,
+    native_width: int | None = None,
+    native_height: int | None = None,
+    scaled_width: int | None = None,
+    scaled_height: int | None = None,
+    offset_x: int = 0,
+    offset_y: int = 0,
+    **kwargs: Any,
+) -> tuple[int, int]:
+    """Scales predicted coordinates (x_model, y_model) back to native screen resolution.
+
+    Formula:
+        x_native = round((x_model - offset_x) * (width_native / width_scaled))
+        y_native = round((y_model - offset_y) * (height_native / height_scaled))
+    """
+    nat_w = native_width if native_width is not None else kwargs.get("width_native", 0)
+    nat_h = native_height if native_height is not None else kwargs.get("height_native", 0)
+    sc_w = scaled_width if scaled_width is not None else kwargs.get("width_scaled", 0)
+    sc_h = scaled_height if scaled_height is not None else kwargs.get("height_scaled", 0)
+
+    scale_x = nat_w / sc_w if sc_w > 0 else 1.0
+    scale_y = nat_h / sc_h if sc_h > 0 else 1.0
+    unpadded_x = float(x_model) - offset_x
+    unpadded_y = float(y_model) - offset_y
+    native_x = int(round(unpadded_x * scale_x))
+    native_y = int(round(unpadded_y * scale_y))
+    return max(0, min(nat_w - 1, native_x)), max(0, min(nat_h - 1, native_y))
+
+
 #: Pro records physical pixels; Flash records normalized 0–1000 coordinates.
 #: The marker prevents normalization from being applied twice during rendering.
 COORDINATE_SPACE_KEY = "coordinate_space"

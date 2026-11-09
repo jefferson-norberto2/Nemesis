@@ -51,6 +51,7 @@ from artemis.agents.validator.tool_declarations import (
 )
 from artemis.tools.history import HISTORY_TOOL_NAMES, history_tool_by_name
 from artemis.tools.tool_wrapper import split_multimodal_result
+from artemis.utils.screenshot_scaler import ScalingTransform
 from artemis.utils.coordinates import (
     compute_smart_swipe_coordinates,
     parse_swipe_parameters,
@@ -341,6 +342,18 @@ class McpActionExecutor:
         if raw_name == "click_sequence":
             sequence = self._resolve_sequence(args.get("sequence") or [])
             recorded = self._require_descriptions(args, len(sequence))
+            transform = getattr(self.ctx, "scaling_transform", None)
+            if isinstance(transform, ScalingTransform) and transform.is_scaled:
+                raw_seq = args.get("sequence") or []
+                native_seq = []
+                for pt in raw_seq:
+                    norm_pt = normalize_coordinate_target(pt)
+                    if isinstance(norm_pt, (list, tuple)) and len(norm_pt) == 2:
+                        native_seq.append(
+                            list(transform.model_to_native(float(norm_pt[0]), float(norm_pt[1])))
+                        )
+                if native_seq:
+                    recorded["target_native_coordinates"] = native_seq
             return (
                 "click_sequence",
                 {
@@ -396,6 +409,21 @@ class McpActionExecutor:
             height if isinstance(height, int) and height > 0 else 2400,
         )
 
+    def _scale_model_point(self, x_model: float, y_model: float) -> tuple[int, int]:
+        """Scales predicted model coordinates to native physical resolution, then normalizes for wire."""
+        transform = getattr(self.ctx, "scaling_transform", None)
+        width, height = self._screen_size()
+        if isinstance(transform, ScalingTransform) and transform.is_scaled:
+            native_x, native_y = transform.model_to_native(x_model, y_model)
+            norm_x = int(max(0, min(1000, round(native_x * 1000.0 / max(1, width)))))
+            norm_y = int(max(0, min(1000, round(native_y * 1000.0 / max(1, height)))))
+            return norm_x, norm_y
+        if x_model > 1000 or y_model > 1000:
+            norm_x = int(max(0, min(1000, round(x_model * 1000.0 / max(1, width)))))
+            norm_y = int(max(0, min(1000, round(y_model * 1000.0 / max(1, height)))))
+            return norm_x, norm_y
+        return int(x_model), int(y_model)
+
     def _resolve_target(
         self,
         raw: Any,
@@ -418,7 +446,13 @@ class McpActionExecutor:
             return self._resolve_index(int(target), label, state, index_elements=index_elements)
         if isinstance(target, (list, tuple)) and len(target) == 2:
             recorded = self._require_description(args, label)
-            return [int(target[0]), int(target[1])], recorded
+            x_m, y_m = float(target[0]), float(target[1])
+            transform = getattr(self.ctx, "scaling_transform", None)
+            if isinstance(transform, ScalingTransform) and transform.is_scaled:
+                native_x, native_y = transform.model_to_native(x_m, y_m)
+                recorded["target_native_coordinates"] = [native_x, native_y]
+            nx, ny = self._scale_model_point(x_m, y_m)
+            return [nx, ny], recorded
         raise _ArgError(
             f"Error during {label}: Invalid target format: {raw!r}. Use an element"
             " index from the Visible UI Elements list (e.g. 3) or normalized [x, y]"
@@ -513,8 +547,7 @@ class McpActionExecutor:
             )
         return {"target_descriptions": [d.strip() for d in descriptions]}
 
-    @staticmethod
-    def _resolve_sequence(sequence: Any) -> list[list[int]]:
+    def _resolve_sequence(self, sequence: Any) -> list[list[int]]:
         """Normalize click_sequence entries to coordinate pairs; reject element indices."""
         if isinstance(sequence, str):
             sequence_str = sequence.strip()
@@ -540,7 +573,7 @@ class McpActionExecutor:
                     " or ask_explorer to locate it."
                 )
             if isinstance(target, (list, tuple)) and len(target) == 2:
-                nx, ny = int(target[0]), int(target[1])
+                nx, ny = self._scale_model_point(float(target[0]), float(target[1]))
             else:
                 raise _ArgError(f"Error during click sequence: Invalid target format: {raw_target}")
             resolved.append([nx, ny])
@@ -602,17 +635,24 @@ class McpActionExecutor:
         if kind == "coords":
             x1, y1, x2, y2 = target
             recorded = self._require_description(args, "swipe")
+            transform = getattr(self.ctx, "scaling_transform", None)
+            if isinstance(transform, ScalingTransform) and transform.is_scaled:
+                nat_x1, nat_y1 = transform.model_to_native(x1, y1)
+                nat_x2, nat_y2 = transform.model_to_native(x2, y2)
+                recorded["target_native_coordinates"] = [nat_x1, nat_y1, nat_x2, nat_y2]
+            nx1, ny1 = self._scale_model_point(float(x1), float(y1))
+            nx2, ny2 = self._scale_model_point(float(x2), float(y2))
 
             def finalize(res: ActionResult) -> str:
                 if not res.ok:
                     return f"Error dragging: {res.detail}"
-                return f"Swiped from [{x1}, {y1}] to [{x2}, {y2}] (normalized)."
+                return f"Swiped from [{nx1}, {ny1}] to [{nx2}, {ny2}] (normalized)."
 
             return (
                 "swipe",
                 {
-                    "start": [int(x1), int(y1)],
-                    "end": [int(x2), int(y2)],
+                    "start": [nx1, ny1],
+                    "end": [nx2, ny2],
                     "duration_ms": final_duration,
                 },
                 finalize,
