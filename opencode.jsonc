@@ -1,0 +1,47 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Supplemental rules and architectural guidelines automatically loaded into context
+  "instructions": [
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    ".opencode/rules/architecture-and-boundaries.md",
+    ".opencode/rules/code-quality-and-typing.md",
+    ".opencode/rules/testing-and-mobile-mindset.md"
+  ],
+
+  // Default global permissions (individual agents refine these in .opencode/agents/)
+  "permissions": [
+    {
+      "action": "read",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "edit",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "git push *",
+      "effect": "ask"
+    },
+    {
+      "action": "shell",
+      "resource": "rm -rf *",
+      "effect": "ask"
+    }
+  ],
+
+  // Native ARTEMIS Model Context Protocol (MCP) Server
+  "mcp": {
+    "servers": {
+      "artemis": {
+        "type": "local",
+        "command": ["uv", "run", "python", "-m", "mcp_server"],
+        "disabled": false
+      }
+    }
+  }
+}
