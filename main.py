@@ -1,0 +1,99 @@
+import subprocess
+import time
+from contextlib import contextmanager
+
+from artemis import ArtemisRunner
+from artemis.toolchain import find_scrcpy
+
+
+def mirror_screen(
+    device_serial: str,
+    title: str = "Artemis - Smartphone Mirror",
+    always_on_top: bool = True,
+) -> subprocess.Popen | None:
+    """Inicia o espelhamento da tela via scrcpy em segundo plano."""
+    scrcpy_bin = find_scrcpy() or "scrcpy"
+    try:
+        cmd = [
+            scrcpy_bin,
+            "--serial",
+            device_serial,
+            "--window-title",
+            title,
+            "--stay-awake",
+        ]
+        if always_on_top:
+            cmd.append("--always-on-top")
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(1.0)  # Aguarda a janela do scrcpy carregar
+        return proc
+    except Exception as e:
+        print(f"[Aviso] Não foi possível iniciar o espelhamento via scrcpy: {e}")
+        return None
+
+
+@contextmanager
+def start_screen_mirror(
+    device_serial: str,
+    title: str = "Artemis - Smartphone Mirror",
+    auto_close: bool = True,
+    always_on_top: bool = True,
+):
+    """Context manager que mantém a tela espelhada durante a execução."""
+    proc = mirror_screen(device_serial, title=title, always_on_top=always_on_top)
+    try:
+        yield proc
+    finally:
+        if auto_close and proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+def get_device_serial() -> str:
+    """Retorna o serial do dispositivo conectado via ADB."""
+    try:
+        result = subprocess.run(
+            ["adb", "devices"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        lines = result.stdout.strip().splitlines()
+        devices = [line.split()[0] for line in lines[1:] if "device" in line]
+        if devices:
+            return devices[0]  # Retorna o primeiro dispositivo encontrado
+        else:
+            raise RuntimeError("Nenhum dispositivo conectado via ADB.")
+    except Exception as e:
+        raise RuntimeError(f"Erro ao obter o serial do dispositivo: {e}")
+
+DEVICE_SERIAL = get_device_serial()
+
+# Espelha a tela em segundo plano enquanto executa o bot
+# Dica: defina auto_close=False se preferir manter a janela do scrcpy aberta após a automação
+with start_screen_mirror(device_serial=DEVICE_SERIAL, auto_close=True):
+    with ArtemisRunner(device_serial=DEVICE_SERIAL, profile="flash") as bot:
+        # Basic task execution
+        start_time = time.time()
+        result = bot.run(
+            "Open the settings menu, navigate to the 'Display' section, turn on adaptive brightness, and turn on the dark mode. Only Use the tap command to interact with the screen.",
+            return_steps=True,
+        )
+        end_time = time.time()
+        print(f"Execution time: {end_time - start_time:.2f} seconds")
+
+# if result and "steps" in result:
+#     for step in result["steps"]:
+#         print(f"\nPasso {step['step_number']}: {step['command']}")
+#         print(f"  Activity atual: {step.get('current_activity') or step.get('activity') or 'Desconhecida'}")
+#         print(f"  Coordenadas (0-1000): {step['coordinates']}")
+#         print(f"  Pixels reais na tela: {step['pixel_coordinates']}")
+#         print(f"  Argumentos: {step['args']}")
+#         print(f"  Status da ação: {step.get('status', 'concluído')}")
